@@ -1,36 +1,36 @@
-import React, { useEffect, useState } from 'react'
-import axios from 'axios'
-import { backendUrl, currency } from '../App'
-import { toast } from 'react-toastify'
-import { assets } from '../assets/assets'
+import axios from "axios";
+import { useEffect, useState } from "react";
+import { toast } from "react-toastify";
+import { backendUrl } from "../App";
+import { assets } from "../assets/assets";
 
 const Orders = ({ token }) => {
-  const [orders, setOrders] = useState([])
+  const [orders, setOrders] = useState([]);
 
   const fetchAllOrders = async () => {
     if (!token) return;
 
     try {
       const response = await axios.post(
-        backendUrl + '/api/order/list',
+        backendUrl + "/api/order/list",
         {},
         { headers: { token } }
-      )
+      );
 
       if (response.data.success) {
-        setOrders(response.data.orders.reverse())
+        setOrders(response.data.orders.reverse());
       } else {
-        toast.error(response.data.message)
+        toast.error(response.data.message);
       }
     } catch (error) {
-      toast.error(error.message)
+      toast.error(error.message);
     }
-  }
+  };
   const statusHandler = async (event, orderId) => {
     try {
       const newStatus = event.target.value;
       const response = await axios.post(
-        backendUrl + '/api/order/status',
+        backendUrl + "/api/order/status",
         { orderId, status: newStatus },
         { headers: { token } }
       );
@@ -45,10 +45,10 @@ const Orders = ({ token }) => {
       toast.error(error.message || "Something went wrong");
     }
   };
-  
+
   useEffect(() => {
-    fetchAllOrders()
-  }, [token])
+    fetchAllOrders();
+  }, [token]);
 
   return (
     <div>
@@ -64,23 +64,22 @@ const Orders = ({ token }) => {
               <div>
                 {order.items.map((item, itemIndex) => (
                   <p className="py-0.5" key={itemIndex}>
-                    {item.name} x {item.quantity}{' '}
-                    <span>{item.size}</span>
+                    {item.name} x {item.quantity} <span>{item.size}</span>
                   </p>
                 ))}
               </div>
               <p className="mt-3 mb-2 font-medium">
-                {order.address.firstName + ' ' + order.address.lastName}
+                {order.address.firstName + " " + order.address.lastName}
               </p>
               <div>
-                <p>{order.address.street + ','}</p>
+                <p>{order.address.street + ","}</p>
                 <p>
                   {order.address.city +
-                    ', ' +
+                    ", " +
                     order.address.state +
-                    ', ' +
+                    ", " +
                     order.address.country +
-                    ', ' +
+                    ", " +
                     order.address.zipcode}
                 </p>
               </div>
@@ -91,30 +90,26 @@ const Orders = ({ token }) => {
                 Items : {order.items.length}
               </p>
               <p className="mt-3">Method : {order.paymentMethod}</p>
-              <p>Payment : {order.payment ? 'Done' : 'Pending'}</p>
+              <p>Payment : {order.payment ? "Done" : "Pending"}</p>
               <p>Date : {new Date(order.date).toLocaleDateString()}</p>
             </div>
-            <p className="text-sm sm-text-[15px]">
-              {currency}
-              {order.amount} $
-            </p>
+            <p className="text-sm sm-text-[15px]">{order.amount} &#2547;</p>
             <select
-  onChange={(event) => statusHandler(event, order._id)}
-  value={order.status}
-  className="p-2 font-semibold text-black bg-white border border-gray-300 rounded"
->
-  <option value="Order Placed">Order Placed</option>
-  <option value="Paking">Paking</option>
-  <option value="Shipped">Shipped</option>
-  <option value="Out for delivery">Out for delivery</option>
-  <option value="Delivered">Delivered</option>
-</select>
-
+              onChange={(event) => statusHandler(event, order._id)}
+              value={order.status}
+              className="p-2 font-semibold text-black bg-white border border-gray-300 rounded"
+            >
+              <option value="Order Placed">Order Placed</option>
+              <option value="Paking">Paking</option>
+              <option value="Shipped">Shipped</option>
+              <option value="Out for delivery">Out for delivery</option>
+              <option value="Delivered">Delivered</option>
+            </select>
           </div>
         ))}
       </div>
     </div>
-  )
-}
+  );
+};
 
-export default Orders
+export default Orders;
