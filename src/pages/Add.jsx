@@ -1,5 +1,5 @@
 import axios from "axios";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import ReactQuill from "react-quill";
 import "react-quill/dist/quill.snow.css";
 import { toast } from "react-toastify";
@@ -16,11 +16,44 @@ const Add = ({ token }) => {
   const [description, setDescription] = useState("");
   const [longDescription, setLongDescription] = useState("");
   const [category, setCategory] = useState("");
-  const [subCategory, setSubCategory] = useState("");
   const [price, setPrice] = useState("");
   const [discount, setDiscount] = useState(0);
   const [sizes, setSizes] = useState([]);
   const [bestSeller, setBestSeller] = useState(false);
+
+  // Dynamic categories
+  const [categories, setCategories] = useState([]);
+  const [catLoading, setCatLoading] = useState(false);
+
+  const fetchCategories = async () => {
+    try {
+      setCatLoading(true);
+      const params = new URLSearchParams({
+        active: "true",
+        limit: "500",
+        sort: "name",
+      });
+      const { data } = await axios.get(
+        `${backendUrl}/api/category?${params.toString()}`
+      );
+      if (data.success) {
+        setCategories(Array.isArray(data.categories) ? data.categories : []);
+      } else {
+        toast.error(data.message || "Failed to load categories");
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error(
+        err?.response?.data?.message || err.message || "Request failed"
+      );
+    } finally {
+      setCatLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchCategories();
+  }, []);
 
   const onSubmitHandler = async (e) => {
     e.preventDefault();
@@ -35,8 +68,7 @@ const Add = ({ token }) => {
       formData.append("name", name);
       formData.append("description", description);
       formData.append("longDescription", longDescription);
-      formData.append("category", category);
-      formData.append("subCategory", subCategory);
+      formData.append("category", category); // send selected category (name)
       formData.append("price", price);
       formData.append("discount", discount);
       formData.append("sizes", JSON.stringify(sizes));
@@ -49,14 +81,18 @@ const Add = ({ token }) => {
       );
 
       if (response.data.success) {
-        toast.success(response.data.message);
+        toast.success(response.data.message || "Product added");
         resetForm();
       } else {
-        toast.error(response.data.message);
+        toast.error(response.data.message || "Failed to add product");
       }
     } catch (error) {
       console.error(error);
-      toast.error("Something went wrong");
+      toast.error(
+        error?.response?.data?.message ||
+          error.message ||
+          "Something went wrong"
+      );
     }
   };
 
@@ -69,7 +105,6 @@ const Add = ({ token }) => {
     setDescription("");
     setLongDescription("");
     setCategory("");
-    setSubCategory("");
     setPrice("");
     setDiscount(0);
     setSizes([]);
@@ -148,29 +183,16 @@ const Add = ({ token }) => {
             value={category}
             className="w-full px-3 py-2 border border-gray-500 max-w-[500px]"
             required
+            disabled={catLoading}
           >
-            <option value="">Select Category</option>
-            <option value="Men">Men</option>
-            <option value="Women">Women</option>
-            <option value="Kids">Kids</option>
-          </select>
-        </div>
-
-        <div>
-          <p className="mb-2 text-lg font-semibold">Product Sub Category</p>
-          <select
-            onChange={(e) => setSubCategory(e.target.value)}
-            value={subCategory}
-            className="w-full px-3 py-2 border border-gray-500 max-w-[500px]"
-            required
-          >
-            <option value="">Select Sub Category</option>
-            <option value="Belt Combo">Belt Combo</option>
-            <option value="Love Box combo">Love Box combo</option>
-            <option value="Full combo">Full combo</option>
-            <option value="প্রিন্ট শার্ট কম্বো">প্রিন্ট শার্ট কম্বো</option>
-            <option value="ছোট কম্বো">ছোট কম্বো</option>
-            <option value="শাড়ি">শাড়ি</option>
+            <option value="">
+              {catLoading ? "Loading categories…" : "Select Category"}
+            </option>
+            {categories.map((cat) => (
+              <option key={cat._id} value={cat.name}>
+                {cat.name}
+              </option>
+            ))}
           </select>
         </div>
 

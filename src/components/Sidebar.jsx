@@ -1,36 +1,52 @@
+import { ClipboardList, List, PlusSquare, Tag } from "lucide-react";
 import { NavLink } from "react-router-dom";
-import { assets } from "../assets/assets";
+
+const linkBase =
+  "flex items-center gap-3 border border-gray-500 border-r-0 px-3 py-2 rounded-lg bg-gray-200";
+const activeClasses = "bg-slate-800 text-white border-slate-800";
 
 const Sidebar = () => {
   return (
     <div className="w-[18%] min-h-screen border-r-2">
       <div className="flex flex-col gap-4 pt-6 pl-[20%] text-[15px]">
         <NavLink
-          className={
-            "flex items-center gap-3 border border-gray-500 border-r-0 px-3 py-2 rounded-lg bg-gray-200"
+          to="/add"
+          className={({ isActive }) =>
+            `${linkBase} ${isActive ? activeClasses : ""}`
           }
-          to={"/add"}
         >
-          <img className="w-6 h-6" src={assets.add_icon} alt="Add Items" />
+          <PlusSquare className="w-6 h-6" />
           <p className="hidden text-lg font-semibold md:block">Add Items</p>
         </NavLink>
+
         <NavLink
-          className={
-            "flex items-center gap-3 border border-gray-500 border-r-0 px-3 py-2 rounded-lg bg-gray-200"
+          to="/list"
+          className={({ isActive }) =>
+            `${linkBase} ${isActive ? activeClasses : ""}`
           }
-          to={"/list"}
         >
-          <img className="w-6 h-6" src={assets.parcel_icon} alt="List Items" />
+          <List className="w-6 h-6" />
           <p className="hidden text-lg font-semibold md:block">List Items</p>
         </NavLink>
+
         <NavLink
-          className={
-            "flex items-center gap-3 border border-gray-500 border-r-0 px-3 py-2 rounded-lg bg-gray-200"
+          to="/orders"
+          className={({ isActive }) =>
+            `${linkBase} ${isActive ? activeClasses : ""}`
           }
-          to={"/orders"}
         >
-          <img className="w-6 h-6" src={assets.order_icon} alt="Add Products" />
+          <ClipboardList className="w-6 h-6" />
           <p className="hidden text-lg font-semibold md:block">View Orders</p>
+        </NavLink>
+
+        <NavLink
+          to="/categories"
+          className={({ isActive }) =>
+            `${linkBase} ${isActive ? activeClasses : ""}`
+          }
+        >
+          <Tag className="w-6 h-6" />
+          <p className="hidden text-lg font-semibold md:block">Categories</p>
         </NavLink>
       </div>
     </div>

@@ -6,6 +6,7 @@ import Login from "./components/Login";
 import Navbar from "./components/Navbar";
 import Sidebar from "./components/Sidebar";
 import Add from "./pages/Add";
+import Categories from "./pages/Categories";
 import EditProduct from "./pages/Edit";
 import List from "./pages/List";
 import Orders from "./pages/Orders";
@@ -56,6 +57,10 @@ const App = () => {
                 <Route
                   path="/edit/:id"
                   element={<EditProduct token={token} />}
+                />
+                <Route
+                  path="/categories"
+                  element={<Categories token={token} />}
                 />
                 <Route path="/list" element={<List token={token} />} />
                 <Route path="/orders" element={<Orders token={token} />} />
