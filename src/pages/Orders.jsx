@@ -2,6 +2,7 @@ import axios from "axios";
 import {
   ArrowUpDown,
   CalendarClock,
+  Edit3,
   Eye,
   Loader2,
   MapPin,
@@ -35,6 +36,9 @@ const SORT_OPTIONS = [
   { value: "status_desc", label: "Status: Z → A" },
 ];
 
+const BD_PHONE_REGEX = /^(?:\+?88)?01[3-9]\d{8}$/;
+const BD_POSTAL_REGEX = /^\d{4}$/;
+
 const Orders = ({ token }) => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -44,11 +48,21 @@ const Orders = ({ token }) => {
 
   const headers = useMemo(() => ({ headers: { token } }), [token]);
 
-  // Modal state (courier check) — no input, auto-fetch
   const [modalOpen, setModalOpen] = useState(false);
   const [modalPhone, setModalPhone] = useState("");
   const [courierLoading, setCourierLoading] = useState(false);
   const [courierData, setCourierData] = useState(null);
+
+  const [addrOpen, setAddrOpen] = useState(false);
+  const [addrSaving, setAddrSaving] = useState(false);
+  const [editingOrderId, setEditingOrderId] = useState(null);
+  const [addrForm, setAddrForm] = useState({
+    recipientName: "",
+    phone: "",
+    addressLine1: "",
+    district: "",
+    postalCode: "",
+  });
 
   const fetchAllOrders = async () => {
     if (!token) return;
@@ -60,7 +74,6 @@ const Orders = ({ token }) => {
         headers
       );
       if (data.success) {
-        // newest first coming from API? we control via sort selector anyway
         setOrders(data.orders || []);
       } else {
         toast.error(data.message || "Failed to load orders");
@@ -104,45 +117,43 @@ const Orders = ({ token }) => {
     }
   };
 
-  // ---------- Courier check (auto fetch) ----------
   const normalizeCourier = (raw) => {
-    let couriers = [];
-    if (Array.isArray(raw?.couriers)) {
-      couriers = raw.couriers.map((c) => ({
-        name: c.name || c.courier || "Unknown",
-        total: Number(c.total ?? 0),
-        success: Number(c.success ?? 0),
-        cancel: Number(c.cancel ?? 0),
-      }));
-    } else if (raw && typeof raw === "object") {
-      couriers = Object.entries(raw).map(([name, v]) => ({
-        name,
-        total: Number(v?.total ?? 0),
-        success: Number(v?.success ?? 0),
-        cancel: Number(v?.cancel ?? 0),
-      }));
-    }
-
-    const totals = couriers.reduce(
-      (acc, c) => {
-        acc.total += c.total;
-        acc.success += c.success;
-        acc.cancel += c.cancel;
-        return acc;
-      },
-      { total: 0, success: 0, cancel: 0 }
-    );
-
-    const pctSuccess =
-      totals.total > 0 ? Math.round((totals.success / totals.total) * 100) : 0;
-    const pctCancel =
-      totals.total > 0 ? Math.round((totals.cancel / totals.total) * 100) : 0;
-
-    return {
-      couriers,
-      totals,
-      pct: { success: pctSuccess, cancel: pctCancel },
+    const cd = raw?.courierData || {};
+    const summary = cd.summary || {
+      total_parcel: 0,
+      success_parcel: 0,
+      cancelled_parcel: 0,
+      success_ratio: 0,
     };
+
+    // flatten couriers (exclude 'summary' key)
+    const couriers = Object.entries(cd)
+      .filter(([k]) => k !== "summary")
+      .map(([key, v]) => ({
+        key,
+        name: v?.name || key,
+        logo: v?.logo || "",
+        total: Number(v?.total_parcel ?? 0),
+        success: Number(v?.success_parcel ?? 0),
+        cancel: Number(v?.cancelled_parcel ?? 0),
+        ratio: Number(v?.success_ratio ?? 0),
+      }));
+
+    const totals = {
+      total: Number(summary?.total_parcel ?? 0),
+      success: Number(summary?.success_parcel ?? 0),
+      cancel: Number(summary?.cancelled_parcel ?? 0),
+    };
+    const pct = {
+      success:
+        totals.total > 0
+          ? Math.round((totals.success / totals.total) * 100)
+          : 0,
+      cancel:
+        totals.total > 0 ? Math.round((totals.cancel / totals.total) * 100) : 0,
+    };
+
+    return { couriers, totals, pct };
   };
 
   const checkCourier = async (phone) => {
@@ -179,7 +190,6 @@ const Orders = ({ token }) => {
     setModalPhone(phone || "");
     setCourierData(null);
     setModalOpen(true);
-    // auto-fetch data immediately
     checkCourier(phone || "");
   };
 
@@ -188,6 +198,83 @@ const Orders = ({ token }) => {
     setCourierLoading(false);
     setCourierData(null);
     setModalPhone("");
+  };
+
+  const openAddressModal = (order) => {
+    setEditingOrderId(order?._id || null);
+    setAddrForm({
+      recipientName: order?.address?.recipientName || "",
+      phone: order?.address?.phone || "",
+      addressLine1: order?.address?.addressLine1 || "",
+      district: order?.address?.district || "",
+      postalCode: order?.address?.postalCode || "",
+    });
+    setAddrOpen(true);
+  };
+
+  const closeAddressModal = () => {
+    setAddrOpen(false);
+    setAddrSaving(false);
+    setEditingOrderId(null);
+    setAddrForm({
+      recipientName: "",
+      phone: "",
+      addressLine1: "",
+      district: "",
+      postalCode: "",
+    });
+  };
+
+  const onAddrChange = (e) => {
+    const { name, value } = e.target;
+    setAddrForm((f) => ({ ...f, [name]: value }));
+  };
+
+  const validateAddr = () => {
+    const { recipientName, phone, addressLine1, district, postalCode } =
+      addrForm;
+    if (!recipientName || !phone || !addressLine1 || !district || !postalCode) {
+      toast.error("All address fields are required.");
+      return false;
+    }
+    if (!BD_PHONE_REGEX.test(phone)) {
+      toast.error("Invalid Bangladesh phone number.");
+      return false;
+    }
+    if (!BD_POSTAL_REGEX.test(postalCode)) {
+      toast.error("Postal code must be a 4-digit Bangladesh postcode.");
+      return false;
+    }
+    return true;
+  };
+
+  const saveAddress = async () => {
+    if (!editingOrderId) return;
+    if (!validateAddr()) return;
+
+    try {
+      setAddrSaving(true);
+      const { data } = await axios.post(
+        `${backendUrl}/api/order/update-address`,
+        { orderId: editingOrderId, address: addrForm },
+        headers
+      );
+      if (data?.success) {
+        toast.success("Address updated");
+        closeAddressModal();
+        fetchAllOrders();
+      } else {
+        toast.error(data?.message || "Failed to update address");
+      }
+    } catch (error) {
+      toast.error(
+        error?.response?.data?.message ||
+          error.message ||
+          "Failed to update address"
+      );
+    } finally {
+      setAddrSaving(false);
+    }
   };
 
   // ---------- Filter & Sort (client-side) ----------
@@ -275,7 +362,7 @@ const Orders = ({ token }) => {
       {/* Table */}
       <div className="bg-white border rounded-xl overflow-hidden">
         {/* Head */}
-        <div className="hidden lg:grid grid-cols-[1.1fr_1.8fr_1.2fr_1fr_1fr_1.2fr_1fr] gap-2 py-3 px-4 bg-gray-100 text-sm font-semibold">
+        <div className="hidden lg:grid grid-cols-[1.1fr_1.8fr_1.2fr_1fr_1fr_1.4fr_1.2fr] gap-2 py-3 px-4 bg-gray-100 text-sm font-semibold">
           <div>Order</div>
           <div>Items</div>
           <div>Customer</div>
@@ -327,7 +414,7 @@ const Orders = ({ token }) => {
             return (
               <div
                 key={order._id}
-                className="grid grid-cols-1 lg:grid-cols-[1.1fr_1.8fr_1.2fr_1fr_1fr_1.2fr_1fr] gap-3 lg:gap-2 py-4 px-4 border-t text-sm items-start"
+                className="grid grid-cols-1 lg:grid-cols-[1.1fr_1.8fr_1.2fr_1fr_1fr_1.4fr_1.2fr] gap-3 lg:gap-2 py-4 px-4 border-t text-sm items-start"
               >
                 {/* Order info */}
                 <div className="space-y-1">
@@ -411,13 +498,22 @@ const Orders = ({ token }) => {
                     <Eye className="w-4 h-4" />
                     Check Customer
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => openAddressModal(order)}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded bg-blue-600 text-white hover:bg-blue-700"
+                    title="Edit address"
+                  >
+                    <Edit3 className="w-4 h-4" />
+                    Edit Address
+                  </button>
                 </div>
               </div>
             );
           })}
       </div>
 
-      {/* Modal (auto-fetched data, no input) */}
+      {/* Courier Modal (auto-fetched) */}
       {modalOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
@@ -426,7 +522,7 @@ const Orders = ({ token }) => {
           }}
         >
           <div className="w-full max-w-2xl bg-white rounded-xl shadow-xl overflow-hidden">
-            {/* Modal header */}
+            {/* Header */}
             <div className="flex items-center justify-between px-5 py-3 border-b">
               <div className="font-semibold">
                 Customer Courier Summary {modalPhone ? `• ${modalPhone}` : ""}
@@ -440,7 +536,7 @@ const Orders = ({ token }) => {
               </button>
             </div>
 
-            {/* Modal body */}
+            {/* Body */}
             <div className="p-5 space-y-4">
               {courierLoading && (
                 <div className="py-6 text-center text-gray-600">
@@ -451,14 +547,16 @@ const Orders = ({ token }) => {
 
               {!courierLoading && courierData && (
                 <>
-                  {/* Summary table */}
+                  {/* Table with logos */}
                   <div className="border rounded-md overflow-hidden">
-                    <div className="grid grid-cols-4 bg-gray-100 text-sm font-semibold px-4 py-2">
+                    <div className="grid grid-cols-5 bg-gray-100 text-sm font-semibold px-4 py-2">
                       <div>Courier</div>
                       <div>Total</div>
                       <div>Success</div>
                       <div>Cancel</div>
+                      <div>Success %</div>
                     </div>
+
                     {courierData.couriers.length === 0 ? (
                       <div className="px-4 py-6 text-center text-gray-600">
                         No records found for this customer.
@@ -466,13 +564,23 @@ const Orders = ({ token }) => {
                     ) : (
                       courierData.couriers.map((c) => (
                         <div
-                          key={c.name}
-                          className="grid grid-cols-4 px-4 py-2 border-t text-sm"
+                          key={c.key}
+                          className="grid grid-cols-5 px-4 py-2 border-t text-sm items-center"
                         >
-                          <div>{c.name}</div>
+                          <div className="flex items-center gap-2">
+                            {c.logo ? (
+                              <img
+                                src={c.logo}
+                                alt={c.name}
+                                className="w-5 h-5 object-contain"
+                              />
+                            ) : null}
+                            <span>{c.name}</span>
+                          </div>
                           <div>{c.total}</div>
                           <div>{c.success}</div>
                           <div>{c.cancel}</div>
+                          <div>{c.ratio}%</div>
                         </div>
                       ))
                     )}
@@ -512,6 +620,128 @@ const Orders = ({ token }) => {
                   Unable to fetch courier summary.
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Address Modal */}
+      {addrOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeAddressModal();
+          }}
+        >
+          <div className="w-full max-w-lg bg-white rounded-xl shadow-xl overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-3 border-b">
+              <div className="font-semibold">Edit Delivery Address</div>
+              <button
+                className="p-1 rounded hover:bg-gray-100"
+                onClick={closeAddressModal}
+                aria-label="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-5 space-y-4">
+              <div className="grid grid-cols-1 gap-3">
+                <label className="text-sm font-medium">
+                  Recipient Name
+                  <input
+                    name="recipientName"
+                    value={addrForm.recipientName}
+                    onChange={onAddrChange}
+                    className="mt-1 w-full px-3 py-2 border rounded-md"
+                    type="text"
+                    placeholder="e.g., Mohammad Rahim"
+                    required
+                  />
+                </label>
+
+                <label className="text-sm font-medium">
+                  Phone (BD)
+                  <input
+                    name="phone"
+                    value={addrForm.phone}
+                    onChange={onAddrChange}
+                    className="mt-1 w-full px-3 py-2 border rounded-md"
+                    type="tel"
+                    placeholder="01XXXXXXXXX or +8801XXXXXXXXX"
+                    required
+                  />
+                </label>
+
+                <label className="text-sm font-medium">
+                  Address Line
+                  <input
+                    name="addressLine1"
+                    value={addrForm.addressLine1}
+                    onChange={onAddrChange}
+                    className="mt-1 w-full px-3 py-2 border rounded-md"
+                    type="text"
+                    placeholder="House/Road/Village"
+                    required
+                  />
+                </label>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label className="text-sm font-medium">
+                    District
+                    <input
+                      name="district"
+                      value={addrForm.district}
+                      onChange={onAddrChange}
+                      className="mt-1 w-full px-3 py-2 border rounded-md"
+                      type="text"
+                      placeholder="e.g., Dhaka"
+                      required
+                    />
+                  </label>
+
+                  <label className="text-sm font-medium">
+                    Postal Code
+                    <input
+                      name="postalCode"
+                      value={addrForm.postalCode}
+                      onChange={onAddrChange}
+                      className="mt-1 w-full px-3 py-2 border rounded-md"
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="4 digits"
+                      required
+                    />
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-5 py-3 border-t flex items-center justify-end gap-2">
+              <button
+                className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300"
+                onClick={closeAddressModal}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
+                onClick={saveAddress}
+                disabled={addrSaving}
+                type="button"
+              >
+                {addrSaving ? (
+                  <span className="inline-flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" /> Saving…
+                  </span>
+                ) : (
+                  "Save Address"
+                )}
+              </button>
             </div>
           </div>
         </div>
