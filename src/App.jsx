@@ -7,6 +7,7 @@ import Navbar from "./components/Navbar";
 import Sidebar from "./components/Sidebar";
 import Add from "./pages/Add";
 import Categories from "./pages/Categories";
+import Content from "./pages/Content";
 import EditProduct from "./pages/Edit";
 import List from "./pages/List";
 import Orders from "./pages/Orders";
@@ -64,6 +65,7 @@ const App = () => {
                 />
                 <Route path="/list" element={<List token={token} />} />
                 <Route path="/orders" element={<Orders token={token} />} />
+                <Route path="/content" element={<Content token={token} />} />
               </Routes>
             </div>
           </div>

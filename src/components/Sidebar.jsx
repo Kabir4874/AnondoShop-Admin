@@ -1,4 +1,10 @@
-import { ClipboardList, List, PlusSquare, Tag } from "lucide-react";
+import {
+  ClipboardList,
+  Image as ImageIcon,
+  List,
+  PlusSquare,
+  Tag,
+} from "lucide-react";
 import { NavLink } from "react-router-dom";
 
 const linkBase =
@@ -47,6 +53,17 @@ const Sidebar = () => {
         >
           <Tag className="w-6 h-6" />
           <p className="hidden text-lg font-semibold md:block">Categories</p>
+        </NavLink>
+
+        {/* NEW: Content */}
+        <NavLink
+          to="/content"
+          className={({ isActive }) =>
+            `${linkBase} ${isActive ? activeClasses : ""}`
+          }
+        >
+          <ImageIcon className="w-6 h-6" />
+          <p className="hidden text-lg font-semibold md:block">Content</p>
         </NavLink>
       </div>
     </div>
