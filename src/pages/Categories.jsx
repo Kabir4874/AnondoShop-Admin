@@ -3,6 +3,7 @@ import {
   Check,
   Edit3,
   Hash,
+  ImagePlus,
   Loader2,
   Plus,
   Search,
@@ -20,23 +21,25 @@ const initialForm = { name: "", isActive: true };
 
 const Categories = ({ token }) => {
   const [form, setForm] = useState(initialForm);
+  const [formImageFile, setFormImageFile] = useState(null);
+  const [formImagePreview, setFormImagePreview] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  // table state
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
-  const [sort, setSort] = useState("name"); // or "-name"
+  const [sort, setSort] = useState("name");
   const [pagination, setPagination] = useState({ total: 0, pages: 1 });
 
-  // inline edit
   const [editingId, setEditingId] = useState(null);
   const [editDraft, setEditDraft] = useState({ name: "", isActive: true });
+  const [editImageFile, setEditImageFile] = useState(null);
+  const [editImagePreview, setEditImagePreview] = useState("");
 
-  const headers = useMemo(() => ({ headers: { token } }), [token]);
+  const authHeaders = useMemo(() => ({ headers: { token } }), [token]);
 
   const fetchCategories = async () => {
     try {
@@ -71,6 +74,26 @@ const Categories = ({ token }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, limit, sort]);
 
+  const onPickCreateImage = (file) => {
+    if (!file) {
+      setFormImageFile(null);
+      setFormImagePreview("");
+      return;
+    }
+    setFormImageFile(file);
+    setFormImagePreview(URL.createObjectURL(file));
+  };
+
+  const onPickEditImage = (file) => {
+    if (!file) {
+      setEditImageFile(null);
+      setEditImagePreview("");
+      return;
+    }
+    setEditImageFile(file);
+    setEditImagePreview(URL.createObjectURL(file));
+  };
+
   const onCreate = async (e) => {
     e.preventDefault();
     if (!form.name.trim()) {
@@ -79,15 +102,21 @@ const Categories = ({ token }) => {
     }
     try {
       setSubmitting(true);
-      const { data } = await axios.post(
-        `${backendUrl}/api/category`,
-        { name: form.name.trim(), isActive: form.isActive },
-        headers
-      );
+
+      // ALWAYS send multipart (so backend consistently uses multer)
+      const fd = new FormData();
+      fd.append("name", form.name.trim());
+      fd.append("isActive", String(form.isActive));
+      if (formImageFile) fd.append("image", formImageFile);
+
+      const { data } = await axios.post(`${backendUrl}/api/category`, fd, {
+        headers: { token },
+      });
       if (data.success) {
         toast.success("Category created");
         setForm(initialForm);
-        // refresh to first page to show alphabetical position
+        setFormImageFile(null);
+        setFormImagePreview("");
         setPage(1);
         await fetchCategories();
       } else {
@@ -106,24 +135,28 @@ const Categories = ({ token }) => {
   const startEdit = (cat) => {
     setEditingId(cat._id);
     setEditDraft({ name: cat.name, isActive: !!cat.isActive });
+    setEditImageFile(null);
+    setEditImagePreview(cat?.image?.url || "");
   };
 
   const cancelEdit = () => {
     setEditingId(null);
     setEditDraft({ name: "", isActive: true });
+    setEditImageFile(null);
+    setEditImagePreview("");
   };
 
   const saveEdit = async (id) => {
     try {
-      const payload = {};
-      if (editDraft.name?.trim()) payload.name = editDraft.name.trim();
-      payload.isActive = !!editDraft.isActive;
+      // ALWAYS send multipart for update as well
+      const fd = new FormData();
+      if (editDraft.name?.trim()) fd.append("name", editDraft.name.trim());
+      fd.append("isActive", String(!!editDraft.isActive));
+      if (editImageFile) fd.append("image", editImageFile);
 
-      const { data } = await axios.put(
-        `${backendUrl}/api/category/${id}`,
-        payload,
-        headers
-      );
+      const { data } = await axios.put(`${backendUrl}/api/category/${id}`, fd, {
+        headers: { token },
+      });
       if (data.success) {
         toast.success("Category updated");
         cancelEdit();
@@ -141,10 +174,12 @@ const Categories = ({ token }) => {
 
   const toggleActive = async (cat) => {
     try {
+      const fd = new FormData();
+      fd.append("isActive", String(!cat.isActive));
       const { data } = await axios.put(
         `${backendUrl}/api/category/${cat._id}`,
-        { isActive: !cat.isActive },
-        headers
+        fd,
+        { headers: { token } }
       );
       if (data.success) {
         await fetchCategories();
@@ -164,11 +199,10 @@ const Categories = ({ token }) => {
     try {
       const { data } = await axios.delete(
         `${backendUrl}/api/category/${id}`,
-        headers
+        authHeaders
       );
       if (data.success) {
         toast.info("Category deleted");
-        // If last item on last page gets deleted, move up a page
         if (categories.length === 1 && page > 1) {
           setPage((p) => p - 1);
         } else {
@@ -218,6 +252,41 @@ const Categories = ({ token }) => {
           onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
           required
         />
+
+        <label className="text-sm font-medium">Thumbnail (optional)</label>
+        <div className="flex items-center gap-3">
+          <label className="inline-flex items-center gap-2 px-3 py-2 border rounded-md cursor-pointer hover:bg-gray-50">
+            <ImagePlus className="w-4 h-4" />
+            <span>Choose image</span>
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => onPickCreateImage(e.target.files?.[0] || null)}
+            />
+          </label>
+          {formImagePreview ? (
+            <img
+              src={formImagePreview}
+              alt="Preview"
+              className="h-12 w-12 object-cover rounded border"
+            />
+          ) : (
+            <span className="text-xs text-gray-500">No file chosen</span>
+          )}
+          {!!formImagePreview && (
+            <button
+              type="button"
+              onClick={() => {
+                setFormImageFile(null);
+                setFormImagePreview("");
+              }}
+              className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
+            >
+              Clear
+            </button>
+          )}
+        </div>
 
         <label className="inline-flex items-center gap-2 mt-1 cursor-pointer select-none">
           {form.isActive ? (
@@ -303,11 +372,12 @@ const Categories = ({ token }) => {
 
       {/* Table */}
       <div className="bg-white border rounded-xl overflow-hidden">
-        <div className="hidden md:grid grid-cols-[0.4fr_1.3fr_1.2fr_0.8fr_0.8fr] gap-2 py-3 px-4 bg-gray-100 text-sm font-semibold">
+        <div className="hidden md:grid grid-cols-[0.4fr_0.8fr_1.2fr_1.2fr_0.8fr_0.8fr] gap-2 py-3 px-4 bg-gray-100 text-sm font-semibold">
           <div className="flex items-center gap-1">
             <Hash className="w-4 h-4" />
             ID
           </div>
+          <div>Image</div>
           <div>Name</div>
           <div>Slug</div>
           <div>Status</div>
@@ -330,14 +400,48 @@ const Categories = ({ token }) => {
         {!loading &&
           categories.map((cat) => {
             const isEditing = editingId === cat._id;
+            const liveImageUrl = isEditing
+              ? editImagePreview
+              : cat?.image?.url || "";
+
             return (
               <div
                 key={cat._id}
-                className="grid grid-cols-1 md:grid-cols-[0.4fr_1.3fr_1.2fr_0.8fr_0.8fr] gap-3 md:gap-2 py-3 px-4 border-t text-sm items-center"
+                className="grid grid-cols-1 md:grid-cols-[0.4fr_0.8fr_1.2fr_1.2fr_0.8fr_0.8fr] gap-3 md:gap-2 py-3 px-4 border-t text-sm items-center"
               >
                 {/* ID */}
                 <div className="text-gray-500 break-all">
                   {String(cat._id).slice(-6)}
+                </div>
+
+                {/* Image */}
+                <div className="flex items-center gap-3">
+                  {liveImageUrl ? (
+                    <img
+                      src={liveImageUrl}
+                      alt={cat.name}
+                      className="h-12 w-12 object-cover rounded border"
+                    />
+                  ) : (
+                    <div className="h-12 w-12 rounded border bg-gray-50 flex items-center justify-center text-[10px] text-gray-400">
+                      No img
+                    </div>
+                  )}
+
+                  {isEditing && (
+                    <label className="inline-flex items-center gap-2 px-2 py-1 border rounded-md cursor-pointer hover:bg-gray-50 text-xs">
+                      <ImagePlus className="w-4 h-4" />
+                      <span>Replace</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) =>
+                          onPickEditImage(e.target.files?.[0] || null)
+                        }
+                      />
+                    </label>
+                  )}
                 </div>
 
                 {/* Name */}

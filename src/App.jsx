@@ -10,6 +10,7 @@ import Categories from "./pages/Categories";
 import Content from "./pages/Content";
 import EditProduct from "./pages/Edit";
 import List from "./pages/List";
+import MarketingSettings from "./pages/MarketingSettings";
 import Orders from "./pages/Orders";
 
 export const backendUrl = import.meta.env.VITE_BACKEND_URL;
@@ -66,6 +67,10 @@ const App = () => {
                 <Route path="/list" element={<List token={token} />} />
                 <Route path="/orders" element={<Orders token={token} />} />
                 <Route path="/content" element={<Content token={token} />} />
+                <Route
+                  path="/marketing"
+                  element={<MarketingSettings token={token} />}
+                />
               </Routes>
             </div>
           </div>

@@ -1,4 +1,5 @@
 import {
+  BookMarkedIcon,
   ClipboardList,
   Image as ImageIcon,
   List,
@@ -64,6 +65,15 @@ const Sidebar = () => {
         >
           <ImageIcon className="w-6 h-6" />
           <p className="hidden text-lg font-semibold md:block">Content</p>
+        </NavLink>
+        <NavLink
+          to="/marketing"
+          className={({ isActive }) =>
+            `${linkBase} ${isActive ? activeClasses : ""}`
+          }
+        >
+          <BookMarkedIcon className="w-6 h-6" />
+          <p className="hidden text-lg font-semibold md:block">Marketing</p>
         </NavLink>
       </div>
     </div>
