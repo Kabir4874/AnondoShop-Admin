@@ -19,6 +19,7 @@ import { backendUrl } from "../App";
 const STATUS_OPTIONS = [
   "All",
   "Order Placed",
+  "Confirmed",
   "Pending",
   "Packing",
   "Shipped",
@@ -45,6 +46,9 @@ const Orders = ({ token }) => {
 
   const [filterStatus, setFilterStatus] = useState("All");
   const [sortBy, setSortBy] = useState("date_desc");
+
+  // NEW: date filter (YYYY-MM-DD)
+  const [filterDate, setFilterDate] = useState("");
 
   const headers = useMemo(() => ({ headers: { token } }), [token]);
 
@@ -277,12 +281,27 @@ const Orders = ({ token }) => {
     }
   };
 
+  // Helper: format a Date to YYYY-MM-DD in local time
+  const toLocalYMD = (dateLike) => {
+    const d = new Date(dateLike);
+    if (isNaN(d.getTime())) return "";
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  };
+
   // ---------- Filter & Sort (client-side) ----------
   const visible = useMemo(() => {
     let list = Array.isArray(orders) ? [...orders] : [];
 
     if (filterStatus !== "All") {
       list = list.filter((o) => String(o?.status) === filterStatus);
+    }
+
+    // NEW: filter by selected date (matches order.date calendar day locally)
+    if (filterDate) {
+      list = list.filter((o) => toLocalYMD(o?.date) === filterDate);
     }
 
     const by = sortBy;
@@ -313,7 +332,7 @@ const Orders = ({ token }) => {
     });
 
     return list;
-  }, [orders, filterStatus, sortBy]);
+  }, [orders, filterStatus, filterDate, sortBy]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -339,6 +358,28 @@ const Orders = ({ token }) => {
                 </option>
               ))}
             </select>
+          </div>
+
+          {/* NEW: Date filter */}
+          <div className="inline-flex items-center gap-2">
+            <CalendarClock className="w-4 h-4" />
+            <input
+              type="date"
+              className="px-3 py-2 border rounded-md"
+              value={filterDate}
+              onChange={(e) => setFilterDate(e.target.value)}
+              title="Filter by date"
+            />
+            {filterDate && (
+              <button
+                type="button"
+                className="px-2 py-1 text-xs border rounded hover:bg-gray-50"
+                onClick={() => setFilterDate("")}
+                title="Clear date filter"
+              >
+                Clear
+              </button>
+            )}
           </div>
 
           <div className="inline-flex items-center gap-2">
@@ -433,6 +474,8 @@ const Orders = ({ token }) => {
                       title="Update order status"
                     >
                       <option value="Order Placed">Order Placed</option>
+                      {/* NEW: Confirmed option in row status select */}
+                      <option value="Confirmed">Confirmed</option>
                       <option value="Pending">Pending</option>
                       <option value="Packing">Packing</option>
                       <option value="Shipped">Shipped</option>

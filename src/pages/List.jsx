@@ -1,5 +1,5 @@
 import axios from "axios";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import { backendUrl, currency } from "../App";
@@ -7,6 +7,7 @@ import { backendUrl, currency } from "../App";
 const List = ({ token }) => {
   const [listProducts, setListProducts] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [sortBy, setSortBy] = useState("newest"); // "newest" | "oldest"
   const navigate = useNavigate();
 
   const fetchListProducts = async () => {
@@ -60,8 +61,52 @@ const List = ({ token }) => {
     return Math.max(0, p - (p * d) / 100);
   };
 
+  // Helper: get a comparable timestamp for sorting
+  const getCreatedTime = (item) => {
+    // Prefer createdAt if present
+    if (item?.createdAt) {
+      const t = new Date(item.createdAt).getTime();
+      if (!Number.isNaN(t)) return t;
+    }
+    // Fallback: ObjectId timestamp (first 8 hex chars are seconds since epoch)
+    const id = String(item?._id || "");
+    if (id.length >= 8) {
+      const secs = parseInt(id.substring(0, 8), 16);
+      if (Number.isFinite(secs)) return secs * 1000;
+    }
+    // Last resort
+    return 0;
+  };
+
+  const visible = useMemo(() => {
+    const list = Array.isArray(listProducts) ? [...listProducts] : [];
+    list.sort((a, b) => {
+      const ta = getCreatedTime(a);
+      const tb = getCreatedTime(b);
+      return sortBy === "newest" ? tb - ta : ta - tb;
+    });
+    return list;
+  }, [listProducts, sortBy]);
+
   return (
     <div className="flex flex-col gap-2">
+      {/* Toolbar */}
+      <div className="flex items-center justify-between py-2">
+        <div className="text-base font-semibold">Products</div>
+        <div className="inline-flex items-center gap-2">
+          <label className="text-sm text-gray-700">Sort</label>
+          <select
+            className="px-2 py-1 border rounded"
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            title="Sort products"
+          >
+            <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
+          </select>
+        </div>
+      </div>
+
       {/* Header */}
       <div className="hidden md:grid grid-cols-[0.5fr_1fr_1.2fr_0.7fr_0.8fr_0.6fr_0.6fr_0.8fr] items-center py-2 px-2 border bg-gray-200 text-base text-center font-semibold">
         <div>Image</div>
@@ -83,7 +128,7 @@ const List = ({ token }) => {
 
       {/* Rows */}
       {!loading &&
-        listProducts.map((item) => {
+        visible.map((item) => {
           const imgUrl =
             Array.isArray(item.image) && item.image.length
               ? item.image[0].url || item.image[0] // support old data (string) and new data ({url, publicId})
