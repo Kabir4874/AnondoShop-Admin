@@ -1,3 +1,4 @@
+// src/pages/Orders.jsx (Admin)
 import axios from "axios";
 import {
   ArrowUpDown,
@@ -7,6 +8,8 @@ import {
   Loader2,
   MapPin,
   Phone,
+  RotateCcw,
+  Search as SearchIcon,
   SlidersHorizontal,
   Truck,
   User2,
@@ -44,11 +47,12 @@ const Orders = ({ token }) => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(false);
 
+  // Server-side filters
   const [filterStatus, setFilterStatus] = useState("All");
   const [sortBy, setSortBy] = useState("date_desc");
-
-  // NEW: date filter (YYYY-MM-DD)
-  const [filterDate, setFilterDate] = useState("");
+  const [dateFrom, setDateFrom] = useState(""); // YYYY-MM-DD
+  const [dateTo, setDateTo] = useState(""); // YYYY-MM-DD
+  const [searchTerm, setSearchTerm] = useState("");
 
   const headers = useMemo(() => ({ headers: { token } }), [token]);
 
@@ -72,9 +76,18 @@ const Orders = ({ token }) => {
     if (!token) return;
     try {
       setLoading(true);
+
+      const payload = {
+        status: filterStatus !== "All" ? filterStatus : undefined,
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
+        search: searchTerm?.trim() ? searchTerm.trim() : undefined,
+        sort: sortBy || "date_desc",
+      };
+
       const { data } = await axios.post(
         `${backendUrl}/api/order/list`,
-        {},
+        payload,
         headers
       );
       if (data.success) {
@@ -130,7 +143,6 @@ const Orders = ({ token }) => {
       success_ratio: 0,
     };
 
-    // flatten couriers (exclude 'summary' key)
     const couriers = Object.entries(cd)
       .filter(([k]) => k !== "summary")
       .map(([key, v]) => ({
@@ -281,200 +293,431 @@ const Orders = ({ token }) => {
     }
   };
 
-  // Helper: format a Date to YYYY-MM-DD in local time
-  const toLocalYMD = (dateLike) => {
-    const d = new Date(dateLike);
-    if (isNaN(d.getTime())) return "";
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    return `${yyyy}-${mm}-${dd}`;
+  // What we render = what server returns (filters are server-side)
+  const visible = orders;
+
+  // Quick stats for header
+  const totalAmount = useMemo(
+    () => visible.reduce((sum, o) => sum + (Number(o.amount) || 0), 0),
+    [visible]
+  );
+
+  const applyFilters = () => {
+    fetchAllOrders();
   };
 
-  // ---------- Filter & Sort (client-side) ----------
-  const visible = useMemo(() => {
-    let list = Array.isArray(orders) ? [...orders] : [];
-
-    if (filterStatus !== "All") {
-      list = list.filter((o) => String(o?.status) === filterStatus);
-    }
-
-    // NEW: filter by selected date (matches order.date calendar day locally)
-    if (filterDate) {
-      list = list.filter((o) => toLocalYMD(o?.date) === filterDate);
-    }
-
-    const by = sortBy;
-    list.sort((a, b) => {
-      const da = new Date(a.date).getTime() || 0;
-      const db = new Date(b.date).getTime() || 0;
-      const aa = Number(a.amount || 0);
-      const ab = Number(b.amount || 0);
-      const sa = String(a.status || "");
-      const sb = String(b.status || "");
-
-      switch (by) {
-        case "date_desc":
-          return db - da;
-        case "date_asc":
-          return da - db;
-        case "amount_desc":
-          return ab - aa;
-        case "amount_asc":
-          return aa - ab;
-        case "status_desc":
-          return sb.localeCompare(sa);
-        case "status_asc":
-          return sa.localeCompare(sb);
-        default:
-          return 0;
-      }
-    });
-
-    return list;
-  }, [orders, filterStatus, filterDate, sortBy]);
+  const clearFilters = () => {
+    setFilterStatus("All");
+    setSortBy("date_desc");
+    setDateFrom("");
+    setDateTo("");
+    setSearchTerm("");
+    setTimeout(fetchAllOrders, 0);
+  };
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Header & toolbar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <Truck className="w-6 h-6" />
-          <h1 className="text-2xl font-semibold">Orders</h1>
-        </div>
+      {/* Sticky header bar */}
+      <div className=" top-0 z-10 bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 border-b">
+        <div className="max-w-screen-2xl mx-auto px-3 sm:px-5 py-3">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-black text-white">
+                <Truck className="w-5 h-5" />
+              </div>
+              <div>
+                <h1 className="text-xl sm:text-2xl font-semibold leading-tight">
+                  Orders
+                </h1>
+                <p className="text-xs sm:text-sm text-gray-500">
+                  Manage and track customer orders in real-time
+                </p>
+              </div>
+            </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="inline-flex items-center gap-2">
-            <SlidersHorizontal className="w-4 h-4" />
-            <select
-              className="px-3 py-2 border rounded-md"
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-              title="Filter by status"
-            >
-              {STATUS_OPTIONS.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
+            {/* Filters toolbar */}
+            <div className="w-full lg:w-auto flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2">
+              {/* Status */}
+              <div className="flex items-center gap-2">
+                <SlidersHorizontal className="w-4 h-4 text-gray-600" />
+                <select
+                  className="px-3 py-2 border rounded-md bg-white"
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                  title="Filter by status"
+                >
+                  {STATUS_OPTIONS.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Date range */}
+              <div className="flex flex-col md:flex-row md:items-center gap-2">
+                <input
+                  type="date"
+                  className="px-3 py-2 border rounded-md bg-white"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  title="From date"
+                />
+                <span className="text-gray-500 text-sm">to</span>
+                <input
+                  type="date"
+                  className="px-3 py-2 border rounded-md bg-white"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  title="To date"
+                />
+              </div>
+
+              {/* Search */}
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <SearchIcon className="w-4 h-4 text-gray-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    className="w-full sm:w-56 md:w-64 pl-9 pr-3 py-2 border rounded-md bg-white"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Search name / phone / order id"
+                    title="Search"
+                  />
+                </div>
+              </div>
+
+              {/* Sort */}
+              <div className="flex items-center gap-2">
+                <ArrowUpDown className="w-4 h-4 text-gray-600" />
+                <select
+                  className="px-3 py-2 border rounded-md bg-white"
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  title="Sort orders"
+                >
+                  {SORT_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Apply / Reset */}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={applyFilters}
+                  className="px-4 py-2 rounded-md bg-black text-white hover:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400"
+                  title="Apply filters"
+                >
+                  Search
+                </button>
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="px-3 py-2 rounded-md border hover:bg-gray-50 inline-flex items-center gap-2"
+                  title="Reset filters"
+                >
+                  <RotateCcw className="w-4 h-4" /> Reset
+                </button>
+              </div>
+            </div>
           </div>
 
-          {/* NEW: Date filter */}
-          <div className="inline-flex items-center gap-2">
-            <CalendarClock className="w-4 h-4" />
-            <input
-              type="date"
-              className="px-3 py-2 border rounded-md"
-              value={filterDate}
-              onChange={(e) => setFilterDate(e.target.value)}
-              title="Filter by date"
-            />
-            {filterDate && (
-              <button
-                type="button"
-                className="px-2 py-1 text-xs border rounded hover:bg-gray-50"
-                onClick={() => setFilterDate("")}
-                title="Clear date filter"
-              >
-                Clear
-              </button>
-            )}
-          </div>
-
-          <div className="inline-flex items-center gap-2">
-            <ArrowUpDown className="w-4 h-4" />
-            <select
-              className="px-3 py-2 border rounded-md"
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              title="Sort orders"
-            >
-              {SORT_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+          {/* Stats row */}
+          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div className="rounded-lg border p-3 bg-white">
+              <p className="text-xs text-gray-500">Orders found</p>
+              <p className="text-lg font-semibold">{visible.length}</p>
+            </div>
+            <div className="rounded-lg border p-3 bg-white">
+              <p className="text-xs text-gray-500">Total amount</p>
+              <p className="text-lg font-semibold">
+                {totalAmount.toLocaleString()} ৳
+              </p>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Table */}
-      <div className="bg-white border rounded-xl overflow-hidden">
-        {/* Head */}
-        <div className="hidden lg:grid grid-cols-[1.1fr_1.8fr_1.2fr_1fr_1fr_1.4fr_1.2fr] gap-2 py-3 px-4 bg-gray-100 text-sm font-semibold">
-          <div>Order</div>
-          <div>Items</div>
-          <div>Customer</div>
-          <div>Address</div>
-          <div>Amount</div>
-          <div>Meta</div>
-          <div className="text-center">Actions</div>
+      {/* Content */}
+      <div className="max-w-screen-2xl mx-auto w-full px-3 sm:px-5">
+        {/* Desktop table */}
+        <div className="hidden xl:block bg-white border rounded-xl overflow-hidden shadow-sm">
+          {/* Head */}
+          <div className="grid grid-cols-[1.1fr_1.8fr_1.2fr_1fr_1fr_1.4fr_1.2fr] gap-2 py-3 px-4 bg-gray-50 text-sm font-semibold">
+            <div>Order</div>
+            <div>Items</div>
+            <div>Customer</div>
+            <div>Address</div>
+            <div>Amount</div>
+            <div>Meta</div>
+            <div className="text-center">Actions</div>
+          </div>
+
+          {/* Loading */}
+          {loading && (
+            <div className="py-10 text-center text-gray-600">
+              <Loader2 className="inline-block w-5 h-5 mr-2 animate-spin" />
+              Loading orders…
+            </div>
+          )}
+
+          {/* Empty */}
+          {!loading && visible.length === 0 && (
+            <div className="py-10 text-center text-gray-600">
+              No orders found.
+            </div>
+          )}
+
+          {/* Rows */}
+          {!loading &&
+            visible.map((order) => {
+              const itemSummary =
+                Array.isArray(order.items) && order.items.length
+                  ? order.items
+                      .slice(0, 3)
+                      .map(
+                        (i) =>
+                          `${i.name} × ${i.quantity}${
+                            i.size ? ` (${i.size})` : ""
+                          }`
+                      )
+                      .join(", ") + (order.items.length > 3 ? "…" : "")
+                  : "—";
+              const customer = order?.address?.recipientName || "—";
+              const phone = order?.address?.phone || "—";
+              const addressLine = order?.address
+                ? `${order.address.addressLine1 || ""}, ${
+                    order.address.district || ""
+                  } ${order.address.postalCode || ""}`
+                : "—";
+              const amount = Number(order.amount || 0);
+
+              return (
+                <div
+                  key={order._id}
+                  className="grid grid-cols-1 xl:grid-cols-[1.1fr_1.8fr_1.2fr_1fr_1fr_1.4fr_1.2fr] gap-3 xl:gap-2 py-4 px-4 border-t text-sm items-start hover:bg-gray-50"
+                >
+                  {/* Order info */}
+                  <div className="space-y-1">
+                    <div className="font-semibold">
+                      #{String(order._id).slice(-8)}
+                    </div>
+                    <div className="inline-flex items-center gap-1 text-gray-700">
+                      <CalendarClock className="w-4 h-4" />
+                      {new Date(order.date).toLocaleString()}
+                    </div>
+                    <div className="mt-1">
+                      <select
+                        onChange={(e) => statusHandler(e, order._id)}
+                        value={order.status}
+                        className="px-2 py-1 border rounded text-xs"
+                        title="Update order status"
+                      >
+                        <option value="Order Placed">Order Placed</option>
+                        <option value="Confirmed">Confirmed</option>
+                        <option value="Pending">Pending</option>
+                        <option value="Packing">Packing</option>
+                        <option value="Shipped">Shipped</option>
+                        <option value="Out for delivery">
+                          Out for delivery
+                        </option>
+                        <option value="Delivered">Delivered</option>
+                        <option value="Canceled">Canceled</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Items */}
+                  <div className="text-gray-800">{itemSummary}</div>
+
+                  {/* Customer */}
+                  <div className="space-y-1">
+                    <div className="inline-flex items-center gap-1 font-medium">
+                      <User2 className="w-4 h-4" />
+                      {customer}
+                    </div>
+                    <div className="inline-flex items-center gap-1 text-gray-700 break-all">
+                      <Phone className="w-4 h-4" />
+                      {phone}
+                    </div>
+                  </div>
+
+                  {/* Address */}
+                  <div className="inline-flex items-start gap-1 text-gray-700">
+                    <MapPin className="w-4 h-4 mt-0.5" />
+                    <span>{addressLine}</span>
+                  </div>
+
+                  {/* Amount */}
+                  <div className="inline-flex items-center gap-1 font-semibold">
+                    {amount.toLocaleString()} ৳
+                  </div>
+
+                  {/* Meta */}
+                  <div className="space-y-1">
+                    <div>
+                      <span className="text-gray-500">Method:</span>{" "}
+                      <span className="font-medium">{order.paymentMethod}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Payment:</span>{" "}
+                      <span
+                        className={`font-medium ${
+                          order.payment ? "text-green-700" : "text-amber-700"
+                        }`}
+                      >
+                        {order.payment ? "Done" : "Pending"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center xl:justify-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => openCourierModal(order?.address?.phone)}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded bg-slate-700 text-white hover:bg-slate-800"
+                      title="Check customer delivery rate"
+                    >
+                      <Eye className="w-4 h-4" />
+                      Check
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openAddressModal(order)}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded bg-blue-600 text-white hover:bg-blue-700"
+                      title="Edit address"
+                    >
+                      <Edit3 className="w-4 h-4" />
+                      Address
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
         </div>
 
-        {/* Loading */}
-        {loading && (
-          <div className="py-10 text-center text-gray-600">
-            <Loader2 className="inline-block w-5 h-5 mr-2 animate-spin" />
-            Loading orders…
-          </div>
-        )}
+        {/* Mobile / Tablet cards */}
+        <div className="xl:hidden grid gap-3">
+          {loading && (
+            <div className="py-10 text-center text-gray-600">
+              <Loader2 className="inline-block w-5 h-5 mr-2 animate-spin" />
+              Loading orders…
+            </div>
+          )}
 
-        {/* Empty */}
-        {!loading && visible.length === 0 && (
-          <div className="py-10 text-center text-gray-600">
-            No orders found.
-          </div>
-        )}
+          {!loading && visible.length === 0 && (
+            <div className="py-10 text-center text-gray-600">
+              No orders found.
+            </div>
+          )}
 
-        {/* Rows */}
-        {!loading &&
-          visible.map((order) => {
-            const itemSummary =
-              Array.isArray(order.items) && order.items.length
-                ? order.items
-                    .slice(0, 3)
-                    .map(
-                      (i) =>
-                        `${i.name} × ${i.quantity}${
-                          i.size ? ` (${i.size})` : ""
-                        }`
-                    )
-                    .join(", ") + (order.items.length > 3 ? "…" : "")
+          {!loading &&
+            visible.map((order) => {
+              const itemSummary =
+                Array.isArray(order.items) && order.items.length
+                  ? order.items
+                      .slice(0, 2)
+                      .map(
+                        (i) =>
+                          `${i.name} × ${i.quantity}${
+                            i.size ? ` (${i.size})` : ""
+                          }`
+                      )
+                      .join(", ") + (order.items.length > 2 ? "…" : "")
+                  : "—";
+              const customer = order?.address?.recipientName || "—";
+              const phone = order?.address?.phone || "—";
+              const addressLine = order?.address
+                ? `${order.address.addressLine1 || ""}, ${
+                    order.address.district || ""
+                  } ${order.address.postalCode || ""}`
                 : "—";
-            const customer = order?.address?.recipientName || "—";
-            const phone = order?.address?.phone || "—";
-            const addressLine = order?.address
-              ? `${order.address.addressLine1 || ""}, ${
-                  order.address.district || ""
-                } ${order.address.postalCode || ""}`
-              : "—";
-            const amount = Number(order.amount || 0);
+              const amount = Number(order.amount || 0);
+              const paid = !!order.payment;
 
-            return (
-              <div
-                key={order._id}
-                className="grid grid-cols-1 lg:grid-cols-[1.1fr_1.8fr_1.2fr_1fr_1fr_1.4fr_1.2fr] gap-3 lg:gap-2 py-4 px-4 border-t text-sm items-start"
-              >
-                {/* Order info */}
-                <div className="space-y-1">
-                  <div className="font-semibold">
-                    #{String(order._id).slice(-8)}
+              return (
+                <div
+                  key={order._id}
+                  className="rounded-xl border bg-white shadow-sm overflow-hidden"
+                >
+                  <div className="flex items-center justify-between gap-3 px-4 py-3 border-b">
+                    <div>
+                      <p className="text-sm text-gray-500">Order</p>
+                      <p className="font-semibold">
+                        #{String(order._id).slice(-8)}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-gray-500">Date</p>
+                      <p className="text-sm">
+                        {new Date(order.date).toLocaleString()}
+                      </p>
+                    </div>
                   </div>
-                  <div className="inline-flex items-center gap-1 text-gray-700">
-                    <CalendarClock className="w-4 h-4" />
-                    {new Date(order.date).toLocaleString()}
+
+                  <div className="px-4 py-3 grid gap-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-xs ${
+                          paid
+                            ? "bg-green-100 text-green-700"
+                            : "bg-amber-100 text-amber-700"
+                        }`}
+                      >
+                        {paid ? "Paid" : "Payment Pending"}
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-700">
+                        {order.paymentMethod || "—"}
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-700">
+                        {order.status}
+                      </span>
+                    </div>
+
+                    <div className="text-gray-800">
+                      <p className="text-sm">
+                        <span className="font-medium">Items:</span>{" "}
+                        {itemSummary}
+                      </p>
+                    </div>
+
+                    <div className="flex items-start gap-2 text-gray-700">
+                      <User2 className="w-4 h-4 mt-0.5 flex-none" />
+                      <div className="text-sm">
+                        <p className="font-medium">{customer}</p>
+                        <p className="flex items-center gap-1 break-all">
+                          <Phone className="w-3.5 h-3.5" /> {phone}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-2 text-gray-700">
+                      <MapPin className="w-4 h-4 mt-0.5 flex-none" />
+                      <p className="text-sm">{addressLine}</p>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm text-gray-500">Amount</p>
+                      <p className="text-base font-semibold">
+                        {amount.toLocaleString()} ৳
+                      </p>
+                    </div>
                   </div>
-                  <div className="mt-1">
+
+                  <div className="px-4 py-3 border-t flex items-center justify-between gap-2">
                     <select
                       onChange={(e) => statusHandler(e, order._id)}
                       value={order.status}
-                      className="px-2 py-1 border rounded text-xs"
+                      className="flex-1 px-2 py-2 border rounded text-sm bg-white"
                       title="Update order status"
                     >
                       <option value="Order Placed">Order Placed</option>
-                      {/* NEW: Confirmed option in row status select */}
                       <option value="Confirmed">Confirmed</option>
                       <option value="Pending">Pending</option>
                       <option value="Packing">Packing</option>
@@ -483,80 +726,35 @@ const Orders = ({ token }) => {
                       <option value="Delivered">Delivered</option>
                       <option value="Canceled">Canceled</option>
                     </select>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openCourierModal(order?.address?.phone)}
+                        className="inline-flex items-center gap-1 px-3 py-2 rounded bg-slate-700 text-white hover:bg-slate-800 text-sm"
+                        title="Check customer delivery rate"
+                      >
+                        <Eye className="w-4 h-4" />
+                        Check
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openAddressModal(order)}
+                        className="inline-flex items-center gap-1 px-3 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 text-sm"
+                        title="Edit address"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                        Address
+                      </button>
+                    </div>
                   </div>
                 </div>
-
-                {/* Items */}
-                <div className="text-gray-800">{itemSummary}</div>
-
-                {/* Customer */}
-                <div className="space-y-1">
-                  <div className="inline-flex items-center gap-1 font-medium">
-                    <User2 className="w-4 h-4" />
-                    {customer}
-                  </div>
-                  <div className="inline-flex items-center gap-1 text-gray-700 break-all">
-                    <Phone className="w-4 h-4" />
-                    {phone}
-                  </div>
-                </div>
-
-                {/* Address */}
-                <div className="inline-flex items-start gap-1 text-gray-700">
-                  <MapPin className="w-4 h-4 mt-0.5" />
-                  <span>{addressLine}</span>
-                </div>
-
-                {/* Amount */}
-                <div className="inline-flex items-center gap-1 font-semibold">
-                  {amount} ৳
-                </div>
-
-                {/* Meta */}
-                <div className="space-y-1">
-                  <div>
-                    <span className="text-gray-500">Method:</span>{" "}
-                    <span className="font-medium">{order.paymentMethod}</span>
-                  </div>
-                  <div>
-                    <span className="text-gray-500">Payment:</span>{" "}
-                    <span
-                      className={`font-medium ${
-                        order.payment ? "text-green-700" : "text-amber-700"
-                      }`}
-                    >
-                      {order.payment ? "Done" : "Pending"}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Actions */}
-                <div className="flex items-center lg:justify-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => openCourierModal(order?.address?.phone)}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded bg-slate-700 text-white hover:bg-slate-800"
-                    title="Check customer delivery rate"
-                  >
-                    <Eye className="w-4 h-4" />
-                    Check Customer
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => openAddressModal(order)}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded bg-blue-600 text-white hover:bg-blue-700"
-                    title="Edit address"
-                  >
-                    <Edit3 className="w-4 h-4" />
-                    Edit Address
-                  </button>
-                </div>
-              </div>
-            );
-          })}
+              );
+            })}
+        </div>
       </div>
 
-      {/* Courier Modal (auto-fetched) */}
+      {/* Courier Modal */}
       {modalOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
@@ -565,7 +763,6 @@ const Orders = ({ token }) => {
           }}
         >
           <div className="w-full max-w-2xl bg-white rounded-xl shadow-xl overflow-hidden">
-            {/* Header */}
             <div className="flex items-center justify-between px-5 py-3 border-b">
               <div className="font-semibold">
                 Customer Courier Summary {modalPhone ? `• ${modalPhone}` : ""}
@@ -579,7 +776,6 @@ const Orders = ({ token }) => {
               </button>
             </div>
 
-            {/* Body */}
             <div className="p-5 space-y-4">
               {courierLoading && (
                 <div className="py-6 text-center text-gray-600">
@@ -590,7 +786,6 @@ const Orders = ({ token }) => {
 
               {!courierLoading && courierData && (
                 <>
-                  {/* Table with logos */}
                   <div className="border rounded-md overflow-hidden">
                     <div className="grid grid-cols-5 bg-gray-100 text-sm font-semibold px-4 py-2">
                       <div>Courier</div>
@@ -629,7 +824,6 @@ const Orders = ({ token }) => {
                     )}
                   </div>
 
-                  {/* Badges */}
                   <div className="flex flex-wrap items-center gap-3">
                     <span className="inline-flex items-center gap-2 bg-gray-200 text-gray-800 px-3 py-1.5 rounded-full text-sm">
                       Total : {courierData.totals.total}
@@ -642,7 +836,6 @@ const Orders = ({ token }) => {
                     </span>
                   </div>
 
-                  {/* Success bar */}
                   <div className="mt-2">
                     <div className="h-6 w-full bg-gray-200 rounded overflow-hidden">
                       <div
@@ -677,7 +870,6 @@ const Orders = ({ token }) => {
           }}
         >
           <div className="w-full max-w-lg bg-white rounded-xl shadow-xl overflow-hidden">
-            {/* Header */}
             <div className="flex items-center justify-between px-5 py-3 border-b">
               <div className="font-semibold">Edit Delivery Address</div>
               <button
@@ -689,7 +881,6 @@ const Orders = ({ token }) => {
               </button>
             </div>
 
-            {/* Body */}
             <div className="p-5 space-y-4">
               <div className="grid grid-cols-1 gap-3">
                 <label className="text-sm font-medium">
@@ -762,7 +953,6 @@ const Orders = ({ token }) => {
               </div>
             </div>
 
-            {/* Footer */}
             <div className="px-5 py-3 border-t flex items-center justify-end gap-2">
               <button
                 className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300"
