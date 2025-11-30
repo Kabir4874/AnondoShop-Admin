@@ -8,15 +8,6 @@ import { toast } from "react-toastify";
 import { backendUrl } from "../App";
 
 const SIZE_OPTIONS = ["S-38", "M-40", "L-42", "XL-44", "XXL-46"];
-const SUBCATEGORY_OPTIONS = [
-  "Belt Combo",
-  "Love Box combo",
-  "Full combo",
-  "প্রিন্ট শার্ট কম্বো",
-  "ছোট কম্বো",
-  "শাড়ি",
-];
-
 const SLOT_COUNT = 4;
 
 const EditProduct = ({ token, onSaved }) => {
@@ -30,23 +21,27 @@ const EditProduct = ({ token, onSaved }) => {
   const [slots, setSlots] = useState(Array(SLOT_COUNT).fill(null)); // each slot: { url, publicId } | null
 
   // Newly chosen files to replace slots (parallel array length 4)
-  const [replacements, setReplacements] = useState(Array(SLOT_COUNT).fill(null)); // each: File | null
+  const [replacements, setReplacements] = useState(
+    Array(SLOT_COUNT).fill(null)
+  ); // each: File | null
 
   // Fields
   const [name, setName] = useState("");
   const [description, setDescription] = useState(""); // short description
   const [longDescription, setLongDescription] = useState(""); // HTML from Quill
   const [category, setCategory] = useState("");
-  const [subCategory, setSubCategory] = useState("");
   const [price, setPrice] = useState("");
   const [discount, setDiscount] = useState(0);
   const [sizes, setSizes] = useState([]);
   const [bestSeller, setBestSeller] = useState(false);
 
+  // Dynamic categories (same style as Add.jsx)
+  const [categories, setCategories] = useState([]);
+  const [catLoading, setCatLoading] = useState(false);
+
   // Previews for replacements
   const previews = useMemo(
-    () =>
-      replacements.map((file) => (file ? URL.createObjectURL(file) : null)),
+    () => replacements.map((file) => (file ? URL.createObjectURL(file) : null)),
     [replacements]
   );
 
@@ -57,11 +52,42 @@ const EditProduct = ({ token, onSaved }) => {
     };
   }, [previews]);
 
+  // Fetch categories (dynamic)
+  const fetchCategories = async () => {
+    try {
+      setCatLoading(true);
+      const params = new URLSearchParams({
+        active: "true",
+        limit: "500",
+        sort: "name",
+      });
+      const { data } = await axios.get(
+        `${backendUrl}/api/category?${params.toString()}`
+      );
+      if (data.success) {
+        setCategories(Array.isArray(data.categories) ? data.categories : []);
+      } else {
+        toast.error(data.message || "Failed to load categories");
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error(
+        err?.response?.data?.message || err.message || "Request failed"
+      );
+    } finally {
+      setCatLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchCategories();
+  }, []);
+
   // Load product details
   useEffect(() => {
     if (!productId) {
       toast.error("Product ID not found");
-      navigate("/admin/products");
+      navigate("/list");
       return;
     }
 
@@ -77,7 +103,6 @@ const EditProduct = ({ token, onSaved }) => {
           setDescription(p.description || "");
           setLongDescription(p.longDescription || "");
           setCategory(p.category || "");
-          setSubCategory(p.subCategory || "");
           setPrice(p.price ?? "");
           setDiscount(p.discount ?? 0);
           setSizes(Array.isArray(p.sizes) ? p.sizes : []);
@@ -97,13 +122,13 @@ const EditProduct = ({ token, onSaved }) => {
           setReplacements(Array(SLOT_COUNT).fill(null));
         } else {
           toast.error(data.message || "Failed to load product");
-          navigate("/admin/products");
+          navigate("/list");
         }
       } catch (e) {
         toast.error(
           e?.response?.data?.message || e.message || "Failed to load product"
         );
-        navigate("/admin/products");
+        navigate("/list");
       } finally {
         setLoading(false);
       }
@@ -142,7 +167,6 @@ const EditProduct = ({ token, onSaved }) => {
       form.append("description", description);
       form.append("longDescription", longDescription);
       form.append("category", category);
-      form.append("subCategory", subCategory);
       form.append("price", price);
       form.append("discount", discount);
       form.append("sizes", JSON.stringify(sizes));
@@ -162,14 +186,18 @@ const EditProduct = ({ token, onSaved }) => {
         if (file) form.append(`image${idx + 1}`, file);
       });
 
-      const { data } = await axios.post(`${backendUrl}/api/product/edit`, form, {
-        headers: { token },
-      });
+      const { data } = await axios.post(
+        `${backendUrl}/api/product/edit`,
+        form,
+        {
+          headers: { token },
+        }
+      );
 
       if (data.success) {
         toast.success("Product updated");
         onSaved?.(data.product);
-        navigate("/admin/products");
+        navigate("/list");
       } else {
         toast.error(data.message || "Failed to update");
       }
@@ -258,7 +286,8 @@ const EditProduct = ({ token, onSaved }) => {
           })}
         </div>
         <p className="text-xs text-gray-500 mt-2">
-          You can keep up to <b>4 images</b>. Click a slot to add/change. Replaced images will be deleted from Cloudinary.
+          You can keep up to <b>4 images</b>. Click a slot to add/change.
+          Replaced images will be deleted from Cloudinary.
         </p>
       </div>
 
@@ -308,26 +337,14 @@ const EditProduct = ({ token, onSaved }) => {
             value={category}
             onChange={(e) => setCategory(e.target.value)}
             required
+            disabled={catLoading}
           >
-            <option value="">Select Category</option>
-            <option>Men</option>
-            <option>Women</option>
-            <option>Kids</option>
-          </select>
-        </div>
-
-        <div>
-          <p className="mb-1 font-semibold">Sub Category</p>
-          <select
-            className="w-full px-3 py-2 border"
-            value={subCategory}
-            onChange={(e) => setSubCategory(e.target.value)}
-            required
-          >
-            <option value="">Select Sub Category</option>
-            {SUBCATEGORY_OPTIONS.map((v) => (
-              <option key={v} value={v}>
-                {v}
+            <option value="">
+              {catLoading ? "Loading categories…" : "Select Category"}
+            </option>
+            {categories.map((cat) => (
+              <option key={cat._id} value={cat.name}>
+                {cat.name}
               </option>
             ))}
           </select>
@@ -395,7 +412,7 @@ const EditProduct = ({ token, onSaved }) => {
         </button>
         <button
           type="button"
-          onClick={() => navigate("/admin/products")}
+          onClick={() => navigate("/list")}
           className="px-5 py-2 border"
         >
           Cancel
