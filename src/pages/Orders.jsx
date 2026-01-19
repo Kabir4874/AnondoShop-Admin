@@ -88,7 +88,7 @@ const Orders = ({ token }) => {
       const { data } = await axios.post(
         `${backendUrl}/api/order/list`,
         payload,
-        headers
+        headers,
       );
       if (data.success) {
         setOrders(data.orders || []);
@@ -99,7 +99,7 @@ const Orders = ({ token }) => {
       toast.error(
         error?.response?.data?.message ||
           error.message ||
-          "Failed to load orders"
+          "Failed to load orders",
       );
     } finally {
       setLoading(false);
@@ -117,7 +117,7 @@ const Orders = ({ token }) => {
       const { data } = await axios.post(
         `${backendUrl}/api/order/status`,
         { orderId, status: newStatus },
-        headers
+        headers,
       );
       if (data.success) {
         toast.success("Status updated");
@@ -129,7 +129,7 @@ const Orders = ({ token }) => {
       toast.error(
         error?.response?.data?.message ||
           error.message ||
-          "Something went wrong"
+          "Something went wrong",
       );
     }
   };
@@ -182,7 +182,7 @@ const Orders = ({ token }) => {
       const { data } = await axios.post(
         `${backendUrl}/api/order/courier/check`,
         { phone: phone.trim() },
-        headers
+        headers,
       );
       if (data?.success) {
         setCourierData(normalizeCourier(data.data));
@@ -195,7 +195,7 @@ const Orders = ({ token }) => {
       toast.error(
         error?.response?.data?.message ||
           error.message ||
-          "Courier check failed"
+          "Courier check failed",
       );
     } finally {
       setCourierLoading(false);
@@ -273,7 +273,7 @@ const Orders = ({ token }) => {
       const { data } = await axios.post(
         `${backendUrl}/api/order/update-address`,
         { orderId: editingOrderId, address: addrForm },
-        headers
+        headers,
       );
       if (data?.success) {
         toast.success("Address updated");
@@ -286,7 +286,7 @@ const Orders = ({ token }) => {
       toast.error(
         error?.response?.data?.message ||
           error.message ||
-          "Failed to update address"
+          "Failed to update address",
       );
     } finally {
       setAddrSaving(false);
@@ -294,12 +294,16 @@ const Orders = ({ token }) => {
   };
 
   // What we render = what server returns (filters are server-side)
-  const visible = orders;
+  // Filter out canceled orders
+  const visible = useMemo(
+    () => orders.filter((order) => order.status !== "Canceled"),
+    [orders],
+  );
 
   // Quick stats for header
   const totalAmount = useMemo(
     () => visible.reduce((sum, o) => sum + (Number(o.amount) || 0), 0),
-    [visible]
+    [visible],
   );
 
   const applyFilters = () => {
@@ -448,7 +452,7 @@ const Orders = ({ token }) => {
         {/* Desktop table */}
         <div className="hidden xl:block bg-white border rounded-xl overflow-hidden shadow-sm">
           {/* Head */}
-          <div className="grid grid-cols-[1.1fr_1.8fr_1.2fr_1fr_1fr_1.4fr_1.2fr] gap-2 py-3 px-4 bg-gray-50 text-sm font-semibold">
+          <div className="grid grid-cols-[1.1fr_2.2fr_1.2fr_1fr_1fr_1.4fr_1.2fr] gap-2 py-3 px-4 bg-gray-50 text-sm font-semibold">
             <div>Order</div>
             <div>Items</div>
             <div>Customer</div>
@@ -476,18 +480,6 @@ const Orders = ({ token }) => {
           {/* Rows */}
           {!loading &&
             visible.map((order) => {
-              const itemSummary =
-                Array.isArray(order.items) && order.items.length
-                  ? order.items
-                      .slice(0, 3)
-                      .map(
-                        (i) =>
-                          `${i.name} × ${i.quantity}${
-                            i.size ? ` (${i.size})` : ""
-                          }`
-                      )
-                      .join(", ") + (order.items.length > 3 ? "…" : "")
-                  : "—";
               const customer = order?.address?.recipientName || "—";
               const phone = order?.address?.phone || "—";
               const addressLine = order?.address
@@ -500,7 +492,7 @@ const Orders = ({ token }) => {
               return (
                 <div
                   key={order._id}
-                  className="grid grid-cols-1 xl:grid-cols-[1.1fr_1.8fr_1.2fr_1fr_1fr_1.4fr_1.2fr] gap-3 xl:gap-2 py-4 px-4 border-t text-sm items-start hover:bg-gray-50"
+                  className="grid grid-cols-1 xl:grid-cols-[1.1fr_2.2fr_1.2fr_1fr_1fr_1.4fr_1.2fr] gap-3 xl:gap-2 py-4 px-4 border-t text-sm items-start hover:bg-gray-50"
                 >
                   {/* Order info */}
                   <div className="space-y-1">
@@ -532,8 +524,39 @@ const Orders = ({ token }) => {
                     </div>
                   </div>
 
-                  {/* Items */}
-                  <div className="text-gray-800">{itemSummary}</div>
+                  {/* Items with images */}
+                  <div className="space-y-2">
+                    {Array.isArray(order.items) && order.items.length > 0 ? (
+                      order.items.slice(0, 3).map((item, idx) => {
+                        const itemImage =
+                          Array.isArray(item.image) && item.image.length > 0
+                            ? (typeof item.image[0] === 'string' ? item.image[0] : item.image[0]?.url)
+                            : null;
+                        return (
+                          <div key={idx} className="flex items-center gap-2">
+                            {itemImage && (
+                              <img
+                                src={itemImage}
+                                alt={item.name || "Product"}
+                                className="w-10 h-10 object-cover rounded border"
+                              />
+                            )}
+                            <div className="text-gray-800 text-xs">
+                              {item.name} × {item.quantity}
+                              {item.size ? ` (${item.size})` : ""}
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="text-gray-800">—</div>
+                    )}
+                    {order.items && order.items.length > 3 && (
+                      <div className="text-xs text-gray-500">
+                        +{order.items.length - 3} more item(s)
+                      </div>
+                    )}
+                  </div>
 
                   {/* Customer */}
                   <div className="space-y-1">
@@ -619,18 +642,6 @@ const Orders = ({ token }) => {
 
           {!loading &&
             visible.map((order) => {
-              const itemSummary =
-                Array.isArray(order.items) && order.items.length
-                  ? order.items
-                      .slice(0, 2)
-                      .map(
-                        (i) =>
-                          `${i.name} × ${i.quantity}${
-                            i.size ? ` (${i.size})` : ""
-                          }`
-                      )
-                      .join(", ") + (order.items.length > 2 ? "…" : "")
-                  : "—";
               const customer = order?.address?.recipientName || "—";
               const phone = order?.address?.phone || "—";
               const addressLine = order?.address
@@ -680,11 +691,44 @@ const Orders = ({ token }) => {
                       </span>
                     </div>
 
-                    <div className="text-gray-800">
-                      <p className="text-sm">
-                        <span className="font-medium">Items:</span>{" "}
-                        {itemSummary}
-                      </p>
+                    <div>
+                      <p className="text-sm font-medium mb-2">Items:</p>
+                      <div className="space-y-2">
+                        {Array.isArray(order.items) &&
+                        order.items.length > 0 ? (
+                          order.items.slice(0, 2).map((item, idx) => {
+                            const itemImage =
+                              Array.isArray(item.image) && item.image.length > 0
+                                ? (typeof item.image[0] === 'string' ? item.image[0] : item.image[0]?.url)
+                                : null;
+                            return (
+                              <div
+                                key={idx}
+                                className="flex items-center gap-2"
+                              >
+                                {itemImage && (
+                                  <img
+                                    src={itemImage}
+                                    alt={item.name || "Product"}
+                                    className="w-12 h-12 object-cover rounded border"
+                                  />
+                                )}
+                                <div className="text-gray-800 text-sm">
+                                  {item.name} × {item.quantity}
+                                  {item.size ? ` (${item.size})` : ""}
+                                </div>
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <div className="text-gray-800">—</div>
+                        )}
+                        {order.items && order.items.length > 2 && (
+                          <div className="text-xs text-gray-500">
+                            +{order.items.length - 2} more item(s)
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     <div className="flex items-start gap-2 text-gray-700">
